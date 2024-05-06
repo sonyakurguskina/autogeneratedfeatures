@@ -20,7 +20,6 @@ DATA_TABLE_NAME = "data_" + TABLE_NAME
 PCA_DATA_TABLE_NAME = "pca_" + TABLE_NAME
 
 
-# 1. Загрузка необработанных данных из CSV в PostgreSQL
 def load_csv_to_postgres(engine):
     """
     Этот метод загружает данные из файла CSV в базу данных PostgreSQL. Он выполняет следующие шаги:
