@@ -1,7 +1,7 @@
 from itertools import combinations
 import numpy as np
 import pandas as pd
-from scipy.stats import f_oneway, stats, chi2_contingency
+from scipy.stats import f_oneway, stats, chi2_contingency, normaltest
 from sqlalchemy import create_engine, text
 from sklearn.preprocessing import StandardScaler, LabelEncoder, PolynomialFeatures, PowerTransformer
 from sklearn.decomposition import PCA
@@ -13,7 +13,7 @@ from config.config import Config
 config = Config()
 
 
-CSV = 'datasets/classification.csv'
+CSV = 'datasets/regression.csv'
 TABLE_NAME = str(CSV).split('.csv')[0].split('/')[1].lower()
 METADATA_TABLE_NAME = "metadata_" + TABLE_NAME
 DATA_TABLE_NAME = "data_" + TABLE_NAME
@@ -36,7 +36,7 @@ def load_csv_to_postgres(engine):
     """
     df = pd.read_csv(CSV, encoding='ISO-8859-1')
     df.columns = map(str.lower, df.columns)
-    print(df.info)
+    print('Данные при импорте', df.shape)
 
     numeric_columns = df.select_dtypes(include=np.number).columns
     for feature in numeric_columns:
@@ -52,7 +52,7 @@ def load_csv_to_postgres(engine):
         print("Столбец 'id' уже существует в DataFrame. Не будет создан новый столбец.")
     else:
         df['id'] = range(1, len(df) + 1)
-    print(df.info)
+    print("Данные после очистки", df.shape)
 
     metadata_df = pd.DataFrame({'column_name': df.columns, 'dtype': df.dtypes})
     metadata_df['is_target'] = metadata_df['column_name'] == 'target_column_name'
@@ -318,18 +318,18 @@ def determine_task_type(engine):
     data_df = get_data_df(engine)
     if target_column:
         if target_type == 'object':
-            print('classification')
+            print('Тип задачи classification')
             process_classification_data(engine, data_df)
         elif target_type in ['int64', 'float64']:
             # если целевая переменная числовая, проводим статистический тест для определения распределения
-            p_value = stats.normaltest(target_data)[1]
+            p_value = normaltest(target_data)[1]
             if p_value < 0.05:
                 # если p-value меньше уровня значимости, то распределение не является нормальным, значит это задача
                 # регрессии
-                print('regression')
+                print('Тип задачи regression')
                 process_regression_data(engine)
             else:
-                print('classification')
+                print('Тип задачи classification')
                 process_classification_data(engine, data_df)
         else:
             print('Задача не относится ни к регрессии, ни к классификации')
@@ -357,6 +357,7 @@ def process_classification_data(engine, data_df):
     columns_to_scale = [col for col in data_df.columns if col != 'id']
     data_df[columns_to_scale] = scaler.fit_transform(data_df[columns_to_scale])
 
+    print(f"Нормализованные данные: {data_df}")
     update_database_with_processed_data(engine, data_df, categorical_columns)
 
 
@@ -378,6 +379,8 @@ def process_regression_data(engine):
     data_df[numerical_features] = data_df_scaled
 
     data_df = data_df.drop(columns=data_df.select_dtypes(include=['object']).columns, errors='ignore')
+
+    print(f"Нормализованные данные: {data_df}")
 
     update_database_with_processed_data(engine, data_df, numerical_features)
 
@@ -429,6 +432,8 @@ def generate_features(engine):
     transformed_data = transformer.fit_transform(poly_data_df)
     transformed_data_df = pd.DataFrame(transformed_data, columns=poly_data_df.columns)
 
+    print(f"Сгенерированные признаки: {transformed_data_df}")
+
     update_database_with_generated_features(engine, transformed_data_df)
 
 
@@ -468,7 +473,6 @@ def apply_pca(engine):
 
     pca_columns = [f"pca_{i + 1}" for i in range(15)]
     pca_df = pd.DataFrame(data=pca_result, columns=pca_columns)
-    print(pca_df)
     update_database_with_pca(engine, pca_df)
 
     return pca_df
